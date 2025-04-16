@@ -1,0 +1,12 @@
+[package]
+name = "minecraft"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.98"
+png = "0.17.16"
+serde = "1.0.219"
+vulkano = "0.35.1"
+vulkano-shaders = "0.35.0"
+winit = "0.30.9"
