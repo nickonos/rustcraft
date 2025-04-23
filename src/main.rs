@@ -6,7 +6,6 @@
 )]
 
 use std::sync::Arc;
-use std::{clone, future};
 
 use anyhow::Result;
 use vulkano::buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer};
@@ -16,8 +15,7 @@ use vulkano::command_buffer::{
 };
 use vulkano::device::physical::PhysicalDeviceType;
 use vulkano::device::{
-    self, Device, DeviceCreateInfo, DeviceExtensions, DeviceFeatures, Queue, QueueCreateInfo,
-    QueueFlags,
+    Device, DeviceCreateInfo, DeviceExtensions, DeviceFeatures, Queue, QueueCreateInfo, QueueFlags,
 };
 use vulkano::image::view::ImageView;
 use vulkano::image::{Image, ImageUsage};
@@ -40,7 +38,7 @@ use vulkano::swapchain::{
     Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo, acquire_next_image,
 };
 use vulkano::sync::{self, GpuFuture};
-use vulkano::{Validated, Version, VulkanError, library, swapchain};
+use vulkano::{Validated, Version, VulkanError, library};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::WindowEvent;
