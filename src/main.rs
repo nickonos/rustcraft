@@ -179,18 +179,27 @@ impl App {
 
         let vertices = [
             VertexPoint {
-                position: [-0.5, 0.25],
+                position: [0.5, 0.5],
             },
             VertexPoint {
-                position: [0.0, 0.5],
+                position: [-0.5, 0.5],
             },
             VertexPoint {
-                position: [0.25, -0.1],
+                position: [0.5, -0.5],
+            },
+            VertexPoint {
+                position: [-0.5, -0.5],
+            },
+            VertexPoint {
+                position: [-0.5, 0.5],
+            },
+            VertexPoint {
+                position: [0.5, -0.5],
             },
         ];
 
         let vertex_buffer = Buffer::from_iter(
-            memory_allocator,
+            memory_allocator.clone(),
             BufferCreateInfo {
                 usage: BufferUsage::VERTEX_BUFFER,
                 ..Default::default()
