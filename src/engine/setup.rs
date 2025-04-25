@@ -59,6 +59,11 @@ use crate::{
     game::world::World,
     model::{INDICES, NORMALS, Normal, POSITIONS, Position},
 };
+use crate::{
+    engine::movement::MovementDirection,
+    game::world::World,
+    model::{INDICES, NORMALS, Normal, POSITIONS, Position},
+};
 
 use super::movement::get_movement_direction;
 
@@ -76,6 +81,7 @@ pub struct ApplicationEngine {
     rctx: Option<RenderContext>,
     stored_movement_input: HashMap<MovementDirection, bool>,
     last_rendered_at: Instant,
+    world: Arc<World>,
     world: Arc<World>,
 }
 
@@ -445,47 +451,6 @@ impl ApplicationEngine {
             rctx.recreate_swapchain = false;
         }
 
-        let uniform_buffer = {
-            let rotation = Mat3::from_rotation_y(0 as f32);
-
-            let aspect_ratio =
-                rctx.swapchain.image_extent()[0] as f32 / rctx.swapchain.image_extent()[1] as f32;
-
-            let projection =
-                Mat4::perspective_rh_gl(std::f32::consts::FRAC_PI_2, aspect_ratio, 0.01, 100.0);
-
-            let view = Mat4::look_at_rh(
-                Vec3::new(0.0, 0.0, 1.0),
-                Vec3::new(0.0, 0.0, 0.0),
-                Vec3::new(0.0, -1.0, 0.0),
-            );
-            let scale = Mat4::from_scale(Vec3::splat(0.5));
-
-            let uniform_data = vertex_shader::Data {
-                world: Mat4::from_mat3(rotation).to_cols_array_2d(),
-                view: (view * scale).to_cols_array_2d(),
-                projection: projection.to_cols_array_2d(),
-            };
-
-            println!("world: {:?}", uniform_data.world);
-            println!("view: {:?}", uniform_data.view);
-            println!("projection: {:?}", uniform_data.projection);
-
-            let buffer = self.uniform_buffer_allocator.allocate_sized().unwrap();
-            *buffer.write().unwrap() = uniform_data;
-
-            buffer
-        };
-
-        let layout = &rctx.pipeline.layout().set_layouts()[0];
-        let descriptor_set = DescriptorSet::new(
-            self.descriptor_set_allocator.clone(),
-            layout.clone(),
-            [WriteDescriptorSet::buffer(0, uniform_buffer)],
-            [],
-        )
-        .expect("Unable to create descriptor set");
-
         let (image_index, suboptimal, acquire_future) =
             match acquire_next_image(rctx.swapchain.clone(), None).map_err(Validated::unwrap) {
                 Ok(r) => r,
@@ -521,23 +486,82 @@ impl ApplicationEngine {
             .bind_pipeline_graphics(rctx.pipeline.clone())
             .expect("Unable to bind pipeline")
             //
-            .bind_descriptor_sets(
-                PipelineBindPoint::Graphics,
-                rctx.pipeline.layout().clone(),
-                0,
-                descriptor_set,
-            )
-            .expect("Unable to bind descriptor set")
-            //
             .bind_vertex_buffers(0, (self.vertex_buffer.clone(), self.normals_buffer.clone()))
             .expect("Unable to bind normals buffers")
             //
             .bind_index_buffer(self.index_buffer.clone())
             .expect("Unable to bind index buffer");
 
-        // Add a draw command
-        unsafe { builder.draw_indexed(self.index_buffer.len() as u32, 1, 0, 0, 0) }
-            .expect("Unable to draw");
+        // Set up camera based on player position and rotation
+        let aspect_ratio =
+            rctx.swapchain.image_extent()[0] as f32 / rctx.swapchain.image_extent()[1] as f32;
+
+        let projection =
+            Mat4::perspective_rh_gl(std::f32::consts::FRAC_PI_2, aspect_ratio, 0.01, 100.0);
+
+        // Calculate camera position based on player position and rotation
+        let camera_offset = Vec3::new(
+            player.rotation.sin() * 5.0,
+            2.0,
+            player.rotation.cos() * 5.0,
+        );
+        let camera_position = player.position + camera_offset;
+        let look_at_position = player.position;
+
+        let view = Mat4::look_at_rh(camera_position, look_at_position, Vec3::new(0.0, 1.0, 0.0));
+
+        // Render each block in the world
+        for block in &self.world.blocks {
+            // Skip air blocks
+            if matches!(block.block_type, BlockType::Air) {
+                continue;
+            }
+
+            // Create a uniform buffer for this block
+            let uniform_buffer = {
+                let rotation = Mat3::from_rotation_y(0.0);
+                let scale = Mat4::from_scale(Vec3::splat(1.0));
+
+                // Create a world matrix for this block
+                let world =
+                    Mat4::from_translation(block.position) * Mat4::from_mat3(rotation) * scale;
+
+                let uniform_data = vertex_shader::Data {
+                    world: world.to_cols_array_2d(),
+                    view: view.to_cols_array_2d(),
+                    projection: projection.to_cols_array_2d(),
+                };
+
+                let buffer = self.uniform_buffer_allocator.allocate_sized().unwrap();
+                *buffer.write().unwrap() = uniform_data;
+
+                buffer
+            };
+
+            // Create a descriptor set for this block
+            let layout = &rctx.pipeline.layout().set_layouts()[0];
+            let descriptor_set = DescriptorSet::new(
+                self.descriptor_set_allocator.clone(),
+                layout.clone(),
+                [WriteDescriptorSet::buffer(0, uniform_buffer)],
+                [],
+            )
+            .expect("Unable to create descriptor set");
+
+            // Bind the descriptor set
+            builder
+                .bind_descriptor_sets(
+                    PipelineBindPoint::Graphics,
+                    rctx.pipeline.layout().clone(),
+                    0,
+                    descriptor_set,
+                )
+                .expect("Unable to bind descriptor set");
+
+            // Draw the block
+            unsafe { builder.draw_indexed(self.index_buffer.len() as u32, 1, 0, 0, 0) }
+                .expect("Unable to draw");
+        }
 
         builder
             .end_render_pass(Default::default())
