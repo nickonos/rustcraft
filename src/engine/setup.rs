@@ -50,7 +50,6 @@ use winit::{
     dpi::{LogicalSize, PhysicalSize},
     event::WindowEvent,
     event_loop::{ActiveEventLoop, EventLoop},
-    keyboard::{Key, NamedKey},
     window::{Window, WindowId},
 };
 

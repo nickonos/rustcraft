@@ -1,9 +1,4 @@
-#![allow(
-    dead_code,
-    unused_variables,
-    clippy::too_many_arguments,
-    clippy::unnecessary_wraps
-)]
+#![allow(clippy::too_many_arguments, clippy::unnecessary_wraps)]
 
 mod engine;
 mod game;
