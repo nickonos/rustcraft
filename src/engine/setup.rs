@@ -54,7 +54,11 @@ use winit::{
     window::{Window, WindowId},
 };
 
-use crate::{engine::movement::MovementDirection, model::{Normal, Position, INDICES, NORMALS, POSITIONS}};
+use crate::{
+    engine::movement::MovementDirection,
+    game::world::World,
+    model::{INDICES, NORMALS, Normal, POSITIONS, Position},
+};
 
 use super::movement::get_movement_direction;
 
@@ -72,6 +76,7 @@ pub struct ApplicationEngine {
     rctx: Option<RenderContext>,
     stored_movement_input: HashMap<MovementDirection, bool>,
     last_rendered_at: Instant,
+    world: Arc<World>,
 }
 
 struct RenderContext {
@@ -88,7 +93,7 @@ struct RenderContext {
 }
 
 impl ApplicationEngine {
-    pub fn new(event_loop: &EventLoop<()>) -> ApplicationEngine {
+    pub fn new(event_loop: &EventLoop<()>, world: Arc<World>) -> ApplicationEngine {
         // Create VKInstance
         let library = library::VulkanLibrary::new().expect("No local Vulkan library found");
         let required_extensions =
@@ -252,7 +257,6 @@ impl ApplicationEngine {
             (MovementDirection::Down, false),
         ]);
 
-
         ApplicationEngine {
             instance,
             device,
@@ -267,6 +271,7 @@ impl ApplicationEngine {
             rctx: None,
             stored_movement_input,
             last_rendered_at: Instant::now(),
+            world,
         }
     }
 
@@ -397,9 +402,13 @@ impl ApplicationEngine {
         let dt = elapsed.as_secs() as f64 + elapsed.subsec_nanos() as f64 / 1_000_000_000.0;
 
         let mut movement_direction: Vec3 = Vec3::new(0.0, 0.0, 0.0);
-        for (dir, enabled) in self.stored_movement_input.iter().filter(|(_, enabled)| **enabled){
+        for (dir, enabled) in self
+            .stored_movement_input
+            .iter()
+            .filter(|(_, enabled)| **enabled)
+        {
             movement_direction += dir.to_vec3();
-        };
+        }
         // println!("{dt}");
         println!("{movement_direction}");
 
@@ -592,7 +601,6 @@ impl ApplicationHandler for ApplicationEngine {
                 device_id,
                 event,
                 is_synthetic,
-                
             } => {
                 match event.logical_key.as_ref() {
                     _ => {}
@@ -600,7 +608,8 @@ impl ApplicationHandler for ApplicationEngine {
 
                 let direction = get_movement_direction(event.logical_key.as_ref());
                 if direction.is_some() {
-                    self.stored_movement_input.insert(direction.unwrap(), event.state.is_pressed());
+                    self.stored_movement_input
+                        .insert(direction.unwrap(), event.state.is_pressed());
                 }
             }
             _ => {}
