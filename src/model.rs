@@ -14,7 +14,34 @@ impl Position {
     }
 }
 
-pub const POSITIONS: [Position; 8] = [
+// pub const POSITIONS: [Position; 8] = [
+//     Position {
+//         position: [0.0, 0.0, 0.0],
+//     },
+//     Position {
+//         position: [1.0, 0.0, 0.0],
+//     },
+//     Position {
+//         position: [1.0, 0.0, 1.0],
+//     },
+//     Position {
+//         position: [0.0, 0.0, 1.0],
+//     },
+//     Position {
+//         position: [0.0, 1.0, 0.0],
+//     },
+//     Position {
+//         position: [1.0, 1.0, 0.0],
+//     },
+//     Position {
+//         position: [1.0, 1.0, 1.0],
+//     },
+//     Position {
+//         position: [0.0, 1.0, 1.0],
+//     },
+// ];
+
+pub const POSITIONS: [Position; 4] = [
     Position {
         position: [0.0, 0.0, 0.0],
     },
@@ -22,70 +49,29 @@ pub const POSITIONS: [Position; 8] = [
         position: [1.0, 0.0, 0.0],
     },
     Position {
-        position: [1.0, 0.0, 1.0],
-    },
-    Position {
-        position: [0.0, 0.0, 1.0],
-    },
-    Position {
         position: [0.0, 1.0, 0.0],
     },
     Position {
         position: [1.0, 1.0, 0.0],
     },
-    Position {
-        position: [1.0, 1.0, 1.0],
-    },
-    Position {
-        position: [0.0, 1.0, 1.0],
-    },
 ];
 
-#[derive(BufferContents, Vertex)]
-#[repr(C)]
-pub struct Normal {
-    #[format(R32G32B32_SFLOAT)]
-    normal: [f32; 3],
-}
+// pub const INDICES: [u16; 36] = [
+//     0, 4, 5, //
+//     0, 1, 5, //
+//     1, 5, 6, //
+//     1, 2, 6, //
+//     2, 6, 7, //
+//     2, 3, 7, //
+//     2, 4, 7, //
+//     0, 2, 4, //
+//     0, 1, 2, //
+//     0, 2, 3, //
+//     4, 5, 6, //
+//     4, 6, 7,
+// ];
 
-pub const NORMALS: [Normal; 8] = [
-    Normal {
-        normal: [1.0, 1.0, 1.0],
-    },
-    Normal {
-        normal: [1.0, 1.0, 1.0],
-    },
-    Normal {
-        normal: [1.0, 1.0, 1.0],
-    },
-    Normal {
-        normal: [1.0, 1.0, 1.0],
-    },
-    Normal {
-        normal: [1.0, 1.0, 1.0],
-    },
-    Normal {
-        normal: [1.0, 1.0, 1.0],
-    },
-    Normal {
-        normal: [1.0, 1.0, 1.0],
-    },
-    Normal {
-        normal: [1.0, 1.0, 1.0],
-    },
-];
-
-pub const INDICES: [u16; 36] = [
-    0, 4, 5, //
-    0, 1, 5, //
-    1, 5, 6, //
-    1, 2, 6, //
-    2, 6, 7, //
-    2, 3, 7, //
-    2, 4, 7, //
-    0, 2, 4, //
-    0, 1, 2, //
-    0, 2, 3, //
-    4, 5, 6, //
-    4, 6, 7,
+pub const INDICES: [u16; 6] = [
+    0, 1, 3,
+    0, 2, 3,
 ];

@@ -1,49 +1,23 @@
 use std::{collections::HashMap, sync::Arc, time::Instant};
 
 use glam::{Mat3, Mat4, Vec3};
+use serde::de;
 use vulkano::{
-    Validated, Version, VulkanError,
     buffer::{
-        Buffer, BufferCreateInfo, BufferUsage, Subbuffer,
-        allocator::{SubbufferAllocator, SubbufferAllocatorCreateInfo},
-    },
-    command_buffer::{
-        AutoCommandBufferBuilder, CommandBufferUsage, RenderPassBeginInfo,
-        allocator::StandardCommandBufferAllocator,
-    },
-    descriptor_set::{
-        DescriptorSet, WriteDescriptorSet, allocator::StandardDescriptorSetAllocator,
-    },
-    device::{
-        Device, DeviceCreateInfo, DeviceExtensions, DeviceFeatures, DeviceOwned, Queue,
-        QueueCreateInfo, QueueFlags, physical::PhysicalDeviceType,
-    },
-    format::Format,
-    image::{Image, ImageCreateInfo, ImageType, ImageUsage, view::ImageView},
-    instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
-    library,
-    memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
-    pipeline::{
-        GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout,
-        PipelineShaderStageCreateInfo,
+        allocator::{SubbufferAllocator, SubbufferAllocatorCreateInfo}, Buffer, BufferCreateInfo, BufferUsage, Subbuffer
+    }, command_buffer::{
+        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage, CopyBufferToImageInfo, PrimaryCommandBufferAbstract, RenderPassBeginInfo
+    }, descriptor_set::{
+        allocator::StandardDescriptorSetAllocator, DescriptorSet, WriteDescriptorSet
+    }, device::{
+        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, DeviceFeatures, DeviceOwned, Queue, QueueCreateInfo, QueueFlags
+    }, format::Format, image::{sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo}, view::ImageView, Image, ImageCreateInfo, ImageType, ImageUsage}, instance::{Instance, InstanceCreateFlags, InstanceCreateInfo}, library, memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator}, pipeline::{
         graphics::{
-            GraphicsPipelineCreateInfo,
-            color_blend::{ColorBlendAttachmentState, ColorBlendState},
-            depth_stencil::{DepthState, DepthStencilState},
-            input_assembly::InputAssemblyState,
-            multisample::MultisampleState,
-            rasterization::RasterizationState,
-            vertex_input::{Vertex, VertexDefinition},
-            viewport::{Viewport, ViewportState},
-        },
-        layout::PipelineDescriptorSetLayoutCreateInfo,
-    },
-    render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
-    shader::EntryPoint,
-    swapchain::{
-        Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo, acquire_next_image,
-    },
-    sync::{self, GpuFuture},
+            color_blend::{ColorBlendAttachmentState, ColorBlendState}, depth_stencil::{DepthState, DepthStencilState}, input_assembly::InputAssemblyState, multisample::MultisampleState, rasterization::RasterizationState, vertex_input::{Vertex, VertexDefinition}, viewport::{Viewport, ViewportState}, GraphicsPipelineCreateInfo
+        }, layout::PipelineDescriptorSetLayoutCreateInfo, GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout, PipelineShaderStageCreateInfo
+    }, render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass}, shader::EntryPoint, swapchain::{
+        acquire_next_image, Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo
+    }, sync::{self, GpuFuture}, DeviceSize, Validated, Version, VulkanError
 };
 use winit::{
     application::ApplicationHandler,
@@ -56,7 +30,7 @@ use winit::{
 use crate::{
     engine::movement::MovementDirection,
     game::world::World,
-    model::{INDICES, NORMALS, Normal, POSITIONS, Position},
+    model::{INDICES, POSITIONS, Position},
 };
 
 use super::movement::get_movement_direction;
@@ -69,13 +43,14 @@ pub struct ApplicationEngine {
     descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
     command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
     vertex_buffer: Subbuffer<[Position]>,
-    normals_buffer: Subbuffer<[Normal]>,
     index_buffer: Subbuffer<[u16]>,
     uniform_buffer_allocator: SubbufferAllocator,
     rctx: Option<RenderContext>,
     stored_movement_input: HashMap<MovementDirection, bool>,
     last_rendered_at: Instant,
     world: Arc<World>,
+    texture: Arc<ImageView>,
+    sampler: Arc<Sampler>,
 }
 
 struct RenderContext {
@@ -204,21 +179,6 @@ impl ApplicationEngine {
         )
         .expect("Unable to create vertex buffer");
 
-        let normals_buffer = Buffer::from_iter(
-            memory_allocator.clone(),
-            BufferCreateInfo {
-                usage: BufferUsage::VERTEX_BUFFER,
-                ..Default::default()
-            },
-            AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
-                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                ..Default::default()
-            },
-            NORMALS,
-        )
-        .expect("Unable to create normals buffer");
-
         let index_buffer = Buffer::from_iter(
             memory_allocator.clone(),
             BufferCreateInfo {
@@ -244,8 +204,8 @@ impl ApplicationEngine {
             },
         );
 
-        let pos_vec = POSITIONS.iter().map(|p| p.to_vec3().normalize());
-        println!("normalized: {:?}", pos_vec);
+        // let pos_vec = POSITIONS.iter().map(|p| p.to_vec3().normalize());
+        // println!("normalized: {:?}", pos_vec);
 
         let stored_movement_input = HashMap::from([
             (MovementDirection::Forward, false),
@@ -256,6 +216,61 @@ impl ApplicationEngine {
             (MovementDirection::Down, false),
         ]);
 
+        let mut uploads = AutoCommandBufferBuilder::primary(
+            command_buffer_allocator.clone(),
+            queue.queue_family_index(),
+            CommandBufferUsage::OneTimeSubmit,
+        )
+        .unwrap();
+
+        let texture = {
+            let png_bytes = include_bytes!("../assets/minecraft_icon.png").as_slice();
+            let decoder = png::Decoder::new(png_bytes);
+
+            let mut reader = decoder.read_info().unwrap();
+            let info = reader.info();
+            let extent = [info.width, info.height, 1];
+
+            let upload_buffer = Buffer::new_slice(memory_allocator.clone(), BufferCreateInfo {
+                usage: BufferUsage::TRANSFER_SRC,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                memory_type_filter: MemoryTypeFilter::PREFER_HOST
+                 | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                 ..Default::default()
+            }, (info.width * info.height * 4) as DeviceSize).unwrap();
+
+            reader.next_frame(&mut upload_buffer.write().unwrap()).unwrap();
+
+            let image = Image::new(memory_allocator.clone(), ImageCreateInfo {
+                image_type: ImageType::Dim2d,
+                format: Format::R8G8B8A8_SRGB,
+                extent,
+                usage: ImageUsage::TRANSFER_DST | ImageUsage::SAMPLED,
+                ..Default::default()
+            }, AllocationCreateInfo::default()).unwrap();
+
+            uploads
+                .copy_buffer_to_image(CopyBufferToImageInfo::buffer_image(upload_buffer, image.clone()))
+                .unwrap();
+
+            ImageView::new_default(image).unwrap()
+        };
+
+        let sampler = Sampler::new(
+            device.clone(),
+            SamplerCreateInfo {
+                mag_filter: Filter::Linear,
+                min_filter: Filter::Linear,
+                address_mode: [SamplerAddressMode::Repeat; 3],
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let _ = uploads.build().unwrap().execute(queue.clone()).unwrap();
+
         ApplicationEngine {
             instance,
             device,
@@ -264,13 +279,14 @@ impl ApplicationEngine {
             descriptor_set_allocator,
             command_buffer_allocator,
             vertex_buffer,
-            normals_buffer,
             index_buffer,
             uniform_buffer_allocator,
             rctx: None,
             stored_movement_input,
             last_rendered_at: Instant::now(),
             world,
+            texture,
+            sampler
         }
     }
 
@@ -373,8 +389,6 @@ impl ApplicationEngine {
 
         let previous_frame_end = Some(sync::now(self.device.clone()).boxed());
 
-        let rotation_start = Instant::now();
-
         self.rctx = Some(RenderContext {
             window,
             swapchain,
@@ -409,7 +423,7 @@ impl ApplicationEngine {
             movement_direction += dir.to_vec3();
         }
         // println!("{dt}");
-        println!("{movement_direction}");
+        // println!("{movement_direction}");
 
         rctx.previous_frame_end.as_mut().unwrap().cleanup_finished();
 
@@ -444,46 +458,50 @@ impl ApplicationEngine {
             rctx.recreate_swapchain = false;
         }
 
-        let uniform_buffer = {
-            let rotation = Mat3::from_rotation_y(0 as f32);
+        
 
-            let aspect_ratio =
-                rctx.swapchain.image_extent()[0] as f32 / rctx.swapchain.image_extent()[1] as f32;
+        // let uniform_buffer = {
+        //     let rotation = Mat3::from_rotation_y(0 as f32);
 
-            let projection =
-                Mat4::perspective_rh_gl(std::f32::consts::FRAC_PI_2, aspect_ratio, 0.01, 100.0);
+        //     let aspect_ratio =
+        //         rctx.swapchain.image_extent()[0] as f32 / rctx.swapchain.image_extent()[1] as f32;
 
-            let view = Mat4::look_at_rh(
-                Vec3::new(0.0, 0.0, 1.0),
-                Vec3::new(0.0, 0.0, 0.0),
-                Vec3::new(0.0, -1.0, 0.0),
-            );
-            let scale = Mat4::from_scale(Vec3::splat(0.5));
+        //     let projection =
+        //         Mat4::perspective_rh_gl(std::f32::consts::FRAC_PI_2, aspect_ratio, 0.01, 100.0);
 
-            let uniform_data = vertex_shader::Data {
-                world: Mat4::from_mat3(rotation).to_cols_array_2d(),
-                view: (view * scale).to_cols_array_2d(),
-                projection: projection.to_cols_array_2d(),
-            };
+        //     let view = Mat4::look_at_rh(
+        //         Vec3::new(0.0, 0.0, 1.0),
+        //         Vec3::new(0.0, 0.0, 0.0),
+        //         Vec3::new(0.0, -1.0, 0.0),
+        //     );
+        //     let scale = Mat4::from_scale(Vec3::splat(0.5));
 
-            println!("world: {:?}", uniform_data.world);
-            println!("view: {:?}", uniform_data.view);
-            println!("projection: {:?}", uniform_data.projection);
+        //     let uniform_data = vertex_shader::Data {
+        //         world: Mat4::from_mat3(rotation).to_cols_array_2d(),
+        //         view: (view * scale).to_cols_array_2d(),
+        //         projection: projection.to_cols_array_2d(),
+        //     };
 
-            let buffer = self.uniform_buffer_allocator.allocate_sized().unwrap();
-            *buffer.write().unwrap() = uniform_data;
+        //     println!("world: {:?}", uniform_data.world);
+        //     println!("view: {:?}", uniform_data.view);
+        //     println!("projection: {:?}", uniform_data.projection);
 
-            buffer
-        };
+        //     let buffer = self.uniform_buffer_allocator.allocate_sized().unwrap();
+        //     *buffer.write().unwrap() = uniform_data;
+
+        //     buffer
+        // };
 
         let layout = &rctx.pipeline.layout().set_layouts()[0];
         let descriptor_set = DescriptorSet::new(
             self.descriptor_set_allocator.clone(),
             layout.clone(),
-            [WriteDescriptorSet::buffer(0, uniform_buffer)],
+            [WriteDescriptorSet::sampler(0, self.sampler.clone()),
+        WriteDescriptorSet::image_view(1, self.texture.clone())],
             [],
         )
         .expect("Unable to create descriptor set");
+        
 
         let (image_index, suboptimal, acquire_future) =
             match acquire_next_image(rctx.swapchain.clone(), None).map_err(Validated::unwrap) {
@@ -528,7 +546,7 @@ impl ApplicationEngine {
             )
             .expect("Unable to bind descriptor set")
             //
-            .bind_vertex_buffers(0, (self.vertex_buffer.clone(), self.normals_buffer.clone()))
+            .bind_vertex_buffers(0, self.vertex_buffer.clone())
             .expect("Unable to bind normals buffers")
             //
             .bind_index_buffer(self.index_buffer.clone())
@@ -665,9 +683,10 @@ fn window_size_dependent_setup(
         .collect::<Vec<_>>();
 
     let pipeline = {
-        let vertex_input_state = [Position::per_vertex(), Normal::per_vertex()]
+        let vertex_input_state = [Position::per_vertex()]
             .definition(vs)
             .unwrap();
+
         let stages = [
             PipelineShaderStageCreateInfo::new(vs.clone()),
             PipelineShaderStageCreateInfo::new(fs.clone()),
