@@ -44,11 +44,11 @@ pub struct ApplicationEngine {
     command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
     vertex_buffer: Subbuffer<[Position]>,
     index_buffer: Subbuffer<[u16]>,
-    uniform_buffer_allocator: SubbufferAllocator,
+    _uniform_buffer_allocator: SubbufferAllocator,
     rctx: Option<RenderContext>,
     stored_movement_input: HashMap<MovementDirection, bool>,
     last_rendered_at: Instant,
-    world: Arc<World>,
+    _world: Arc<World>,
     texture: Arc<ImageView>,
     sampler: Arc<Sampler>,
 }
@@ -280,11 +280,11 @@ impl ApplicationEngine {
             command_buffer_allocator,
             vertex_buffer,
             index_buffer,
-            uniform_buffer_allocator,
+            _uniform_buffer_allocator: uniform_buffer_allocator,
             rctx: None,
             stored_movement_input,
             last_rendered_at: Instant::now(),
-            world,
+            _world: world,
             texture,
             sampler
         }
